@@ -104,6 +104,8 @@ class _BoardState extends State<Board> {
                   ),
                 ),
                 const SizedBox(width: 44),
+                ElevatedButton(onPressed: _painter.tooglePointIndicator, child: const Text('显示/隐藏控制点提示')),
+                const SizedBox(width: 44),
                 ElevatedButton(onPressed: _painter.addPoint, child: const Text('在后面加一段')),
                 const SizedBox(width: 44),
                 ElevatedButton(onPressed: _painter.removePoint, child: const Text('去掉最后一段')),
@@ -191,6 +193,8 @@ class BezierGetter extends ChangeNotifier implements CustomPainter {
   final _Offset _startPoint = _Offset(0, 0);
   late List<MyPointCupple> _points = [MyPointCupple(_Offset(511, -155), _Offset(targetWidth, -0))];
 
+   bool _hidePointIndicator = false;
+
   double topHeight;
   double bottomHeight;
   double _targetWidth;
@@ -231,7 +235,9 @@ class BezierGetter extends ChangeNotifier implements CustomPainter {
       paint2,
     );
 
-    _paintPoints(canvas);
+    if(!_hidePointIndicator) {
+      _paintPoints(canvas);
+    }
 
     if (_selectedOffset != null) {
       canvas.drawCircle(
@@ -272,6 +278,11 @@ class BezierGetter extends ChangeNotifier implements CustomPainter {
     }
   }
 
+  void tooglePointIndicator() {
+    _hidePointIndicator = !_hidePointIndicator;
+    notifyListeners();
+  }
+
   void _paintPoints(Canvas canvas) {
     final endpointPaint = Paint()..color = Colors.black;
     final controlpointPaint = Paint()..color = Colors.purple;
@@ -293,6 +304,8 @@ class BezierGetter extends ChangeNotifier implements CustomPainter {
   }
 
   void onPanDown(DragDownDetails details) {
+    if (_hidePointIndicator) return;
+    
     final rPosition = details.localPosition - Offset(0, _lastPaintOffset);
 
     _Offset? temp;
