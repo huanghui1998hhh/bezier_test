@@ -122,6 +122,20 @@ class _BoardState extends State<Board> {
                   },
                 ),
                 const SizedBox(width: 44),
+                Builder(
+                  builder: (context) {
+                    return ElevatedButton(
+                      onPressed: () async {
+                        final data = _painter.generateCodeString();
+                        final mScaffold = ScaffoldMessenger.of(context);
+                        await Clipboard.setData(ClipboardData(text: data));
+                        mScaffold.showSnackBar(const SnackBar(content: Text('已复制到剪贴板')));
+                      },
+                      child: const Text('生成代码'),
+                    );
+                  },
+                ),
+                const SizedBox(width: 44),
                 Expanded(child: TextField(controller: _inputDataController)),
                 Builder(builder: (context) {
                   return ElevatedButton(
@@ -320,6 +334,22 @@ class BezierGetter extends ChangeNotifier implements CustomPainter {
             .map((e) => PointCupple(controlPoint: e.controlPoint.jsonOffset, endPoint: e.endPoint.jsonOffset))
             .toList(),
       );
+
+  String generateCodeString() {
+    var result = '''static const name = LFBezierData(
+  topHeight: $topHeight,
+  bottomHeight: $bottomHeight,
+  targetWidth: $targetWidth,
+  points: [
+''';
+    for (var e in _points) {
+      result +=
+          '    PointCupple(controlPoint: Offset(${e.controlPoint.dx}, ${e.controlPoint.dy}), endPoint: Offset(${e.endPoint.dx}, ${e.endPoint.dy})),\n';
+    }
+    result += '''  ],
+);''';
+    return result;
+  }
 
   bool inputData(String data) {
     LFBezierData? temp;
