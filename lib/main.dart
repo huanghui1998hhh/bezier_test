@@ -45,16 +45,30 @@ class Board extends StatefulWidget {
 }
 
 class _BoardState extends State<Board> {
-  Offset _startPoint = Offset(0, 0);
-  List<PointCupple> _points = [];
+  late final A painter;
+
+  @override
+  void initState() {
+    super.initState();
+    painter = A();
+  }
+
+  @override
+  void dispose() {
+    painter.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CustomPaint(
+      body: GestureDetector(
+        onPanUpdate: (details) => painter.update(details.delta),
+        child: CustomPaint(
         painter: _ChessboardPainter(),
-        foregroundPainter: A([]),
+        foregroundPainter: painter,
         size: Size.infinite,
+      ),
       ),
     );
   }
@@ -76,25 +90,58 @@ class AppScrollBehavior extends MaterialScrollBehavior {
       };
 }
 
-class A extends CustomPainter {
-  const A(this.points);
-  final List<Offset> points;
+class A extends ChangeNotifier implements CustomPainter {
+  A();
+  final Offset _startPoint = Offset(0, 0);
+  final List<PointCupple> _points = [PointCupple(Offset(50,300), Offset(1000,-0))];
 
   @override
   void paint(Canvas canvas, Size size) {
-    final _paint = Paint()..color = Colors.red;
-    final _path = Path();
+    canvas.translate(0, size.height / 2);
+    var paint1 = Paint()
+    ..color = Colors.red;
+
+    var paint2 = Paint()
+    ..color = Colors.blue;
+
+    var path = Path();
 
     // _path.moveTo(size.width, 0);
     // _path.lineTo(0, 0);
     // _path.lineTo(0, 50);
     // _path.quadraticBezierTo(x1, y1, x2, y2)
 
-    canvas.drawPath(_path, _paint);
+    path.moveTo(_startPoint.dx, _startPoint.dy);
+    for (var e in _points) { 
+      path.quadraticBezierTo(e.controlPoint.dx, e.controlPoint.dy,e.endPoint.dx, e.endPoint.dy);
+    }
+    path.lineTo(1000, -100);
+    path.lineTo(0, -100);
+    path.close();
+
+    canvas.drawPath(path, paint1);
+    
+    canvas.drawPath(Path.combine(PathOperation.difference, Path()..addRect(Rect.fromPoints(Offset(0,-100), Offset(1000,300))), path), paint2);
+
+    // canvas.drawLine(_startPoint, _points[0].endPoint    , paint);
+  }
+
+  void update(Offset delta) {
+    _points[0].controlPoint +=  delta;
+    notifyListeners();
   }
 
   @override
-  bool shouldRepaint(A oldDelegate) => false;
+  bool shouldRepaint(A oldDelegate) => true;
+  
+  @override
+  bool? hitTest(Offset? position) => true;
+  
+  @override
+  bool shouldRebuildSemantics(CustomPainter oldDelegate) => false;
+
+  @override
+  SemanticsBuilderCallback? get semanticsBuilder => null;
 }
 
 class _ChessboardPainter extends CustomPainter {
@@ -110,7 +157,7 @@ class _ChessboardPainter extends CustomPainter {
     final y = size.width ~/ 10;
 
     // Draw horizontal lines
-    for (var i = 0; i <= y; i++) {
+    for (var i = 0; i <= x; i++) {
       canvas.drawLine(
         Offset(0, i * cellSize),
         Offset(size.width, i * cellSize),
@@ -119,7 +166,7 @@ class _ChessboardPainter extends CustomPainter {
     }
 
     // Draw vertical lines
-    for (var i = 0; i <= x; i++) {
+    for (var i = 0; i <= y; i++) {
       canvas.drawLine(
         Offset(i * cellSize, 0),
         Offset(i * cellSize, size.height),
