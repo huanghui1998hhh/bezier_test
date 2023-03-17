@@ -101,7 +101,7 @@ class _ChessboardPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.yellow
+      ..color = Colors.grey
       ..strokeWidth = 0.5;
 
     const cellSize = 10.0;
