@@ -1,11 +1,13 @@
-import 'dart:math';
+// ignore_for_file: library_private_types_in_public_api
 
+import 'dart:convert';
+
+import 'package:bezier_test/model.dart';
 import 'package:flutter/material.dart';
 
 import 'dart:ui';
 
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 
 void main() {
   runApp(const MyApp());
@@ -21,20 +23,21 @@ class MyApp extends StatelessWidget {
       title: 'Flutter Demo',
       scrollBehavior: AppScrollBehavior(),
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
         primarySwatch: Colors.blue,
       ),
       home: const Board(),
     );
   }
+}
+
+class _Offset {
+  _Offset(this.dx, this.dy);
+
+  double dx;
+  double dy;
+
+  Offset get uiOffset => Offset(dx, dy);
+  JsonOffset get jsonOffset => JsonOffset(x: dx, y: dy);
 }
 
 class Board extends StatefulWidget {
@@ -45,40 +48,118 @@ class Board extends StatefulWidget {
 }
 
 class _BoardState extends State<Board> {
-  late final A painter;
+  late final _topHeightController = TextEditingController(text: '100');
+  late final _bottomHeightController = TextEditingController(text: '100');
+  late final _targetWidthController = TextEditingController(text: '1700');
+  late final _inputDataController = TextEditingController();
+  late final BezierGetter _painter = BezierGetter(_topHeight, _bottomHeight, 1700);
 
-  @override
-  void initState() {
-    super.initState();
-    painter = A();
-  }
+  double get _topHeight => double.tryParse(_topHeightController.text) ?? 100;
+  double get _bottomHeight => double.tryParse(_bottomHeightController.text) ?? 100;
+  double get _targetWidth => double.tryParse(_targetWidthController.text) ?? 1700;
 
   @override
   void dispose() {
-    painter.dispose();
+    _painter.dispose();
+    _topHeightController.dispose();
+    _bottomHeightController.dispose();
+    _targetWidthController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: GestureDetector(
-        onPanUpdate: (details) => painter.update(details.delta),
-        child: CustomPaint(
-        painter: _ChessboardPainter(),
-        foregroundPainter: painter,
-        size: Size.infinite,
-      ),
+      body: Column(
+        children: [
+          SizedBox(
+            height: 80,
+            child: Row(
+              children: [
+                const SizedBox(width: 44),
+                SizedBox(
+                  width: 88,
+                  child: TextField(
+                    controller: _topHeightController,
+                    decoration: const InputDecoration(labelText: '上高'),
+                    onSubmitted: (value) => _painter.topHeight = _topHeight,
+                  ),
+                ),
+                const SizedBox(width: 44),
+                SizedBox(
+                  width: 88,
+                  child: TextField(
+                    controller: _bottomHeightController,
+                    decoration: const InputDecoration(labelText: '下高'),
+                    onSubmitted: (value) => _painter.bottomHeight = _bottomHeight,
+                  ),
+                ),
+                const SizedBox(width: 44),
+                SizedBox(
+                  width: 88,
+                  child: TextField(
+                    controller: _targetWidthController,
+                    decoration: const InputDecoration(labelText: '预览宽'),
+                    onSubmitted: (value) => _painter.targetWidth = _targetWidth,
+                  ),
+                ),
+                const SizedBox(width: 44),
+                ElevatedButton(onPressed: _painter.addPoint, child: const Text('在后面加一段')),
+                const SizedBox(width: 44),
+                ElevatedButton(onPressed: _painter.removePoint, child: const Text('去掉最后一段')),
+                const SizedBox(width: 44),
+                Builder(
+                  builder: (context) {
+                    return ElevatedButton(
+                      onPressed: () async {
+                        final data = _painter.generateData().toString();
+                        final mScaffold = ScaffoldMessenger.of(context);
+                        await Clipboard.setData(ClipboardData(text: data));
+                        mScaffold.showSnackBar(const SnackBar(content: Text('已复制到剪贴板')));
+                      },
+                      child: const Text('生成数据'),
+                    );
+                  },
+                ),
+                const SizedBox(width: 44),
+                Expanded(child: TextField(controller: _inputDataController)),
+                Builder(builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () {
+                      final result = _painter.inputData(_inputDataController.text);
+                      final mScaffold = ScaffoldMessenger.of(context);
+                      mScaffold.showSnackBar(SnackBar(content: Text(result ? '导入成功' : '导入失败')));
+                    },
+                    child: const Text('导入数据'),
+                  );
+                }),
+                const SizedBox(width: 44),
+              ],
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onPanDown: _painter.onPanDown,
+              onPanUpdate: (details) => _painter.update(details.delta),
+              onPanEnd: _painter.onPanEnd,
+              child: CustomPaint(
+                painter: _ChessboardPainter(),
+                foregroundPainter: _painter,
+                size: Size.infinite,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class PointCupple {
-  PointCupple(this.controlPoint, this.endPoint);
+class MyPointCupple {
+  MyPointCupple(this.controlPoint, this.endPoint);
 
-  Offset controlPoint;
-  Offset endPoint;
+  _Offset controlPoint;
+  _Offset endPoint;
 }
 
 class AppScrollBehavior extends MaterialScrollBehavior {
@@ -90,53 +171,180 @@ class AppScrollBehavior extends MaterialScrollBehavior {
       };
 }
 
-class A extends ChangeNotifier implements CustomPainter {
-  A();
-  final Offset _startPoint = Offset(0, 0);
-  final List<PointCupple> _points = [PointCupple(Offset(50,300), Offset(1000,-0))];
+class BezierGetter extends ChangeNotifier implements CustomPainter {
+  BezierGetter(this.topHeight, this.bottomHeight, this._targetWidth);
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.translate(0, size.height / 2);
-    var paint1 = Paint()
-    ..color = Colors.red;
+  final _Offset _startPoint = _Offset(0, 0);
+  late List<MyPointCupple> _points = [MyPointCupple(_Offset(511, -155), _Offset(targetWidth, -0))];
 
-    var paint2 = Paint()
-    ..color = Colors.blue;
-
-    var path = Path();
-
-    // _path.moveTo(size.width, 0);
-    // _path.lineTo(0, 0);
-    // _path.lineTo(0, 50);
-    // _path.quadraticBezierTo(x1, y1, x2, y2)
-
-    path.moveTo(_startPoint.dx, _startPoint.dy);
-    for (var e in _points) { 
-      path.quadraticBezierTo(e.controlPoint.dx, e.controlPoint.dy,e.endPoint.dx, e.endPoint.dy);
-    }
-    path.lineTo(1000, -100);
-    path.lineTo(0, -100);
-    path.close();
-
-    canvas.drawPath(path, paint1);
-    
-    canvas.drawPath(Path.combine(PathOperation.difference, Path()..addRect(Rect.fromPoints(Offset(0,-100), Offset(1000,300))), path), paint2);
-
-    // canvas.drawLine(_startPoint, _points[0].endPoint    , paint);
-  }
-
-  void update(Offset delta) {
-    _points[0].controlPoint +=  delta;
+  double topHeight;
+  double bottomHeight;
+  double _targetWidth;
+  double get targetWidth => _targetWidth;
+  set targetWidth(double value) {
+    if (_targetWidth == value) return;
+    _targetWidth = value;
+    final flag = _targetWidth / _points.last.endPoint.dx;
+    xScale(flag, handleEnd: true);
     notifyListeners();
   }
 
+  _Offset? _selectedOffset;
+
+  double _lastPaintOffset = 0;
+
   @override
-  bool shouldRepaint(A oldDelegate) => true;
-  
+  void paint(Canvas canvas, Size size) {
+    _lastPaintOffset = size.height / 2;
+    canvas.translate(0, size.height / 2);
+    var paint1 = Paint()..color = Colors.red;
+    var paint2 = Paint()..color = Colors.blue;
+
+    var path = Path();
+    path.moveTo(_startPoint.dx, _startPoint.dy);
+    for (var e in _points) {
+      path.quadraticBezierTo(e.controlPoint.dx, e.controlPoint.dy, e.endPoint.dx, e.endPoint.dy);
+    }
+    path.lineTo(targetWidth, -topHeight);
+    path.lineTo(0, -topHeight);
+    path.close();
+
+    canvas.drawPath(path, paint1);
+
+    canvas.drawPath(
+      Path.combine(PathOperation.difference,
+          Path()..addRect(Rect.fromPoints(Offset(0, -topHeight), Offset(targetWidth, bottomHeight))), path),
+      paint2,
+    );
+
+    _paintPoints(canvas);
+
+    if (_selectedOffset != null) {
+      canvas.drawCircle(
+        _selectedOffset!.uiOffset,
+        15,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3
+          ..color = Colors.green,
+      );
+    }
+  }
+
+  void addPoint() {
+    final flag = _points.length / (_points.length + 1);
+    xScale(flag);
+    _points.add(MyPointCupple(_Offset((0.5 + flag / 2) * targetWidth, 0), _Offset(targetWidth, 0)));
+    notifyListeners();
+  }
+
+  void removePoint() {
+    if (_points.length < 2) return;
+    final flag = targetWidth / _points[_points.length - 2].endPoint.dx;
+    _points.removeLast();
+    xScale(flag, handleEnd: true);
+    notifyListeners();
+  }
+
+  void xScale(double flag, {bool handleEnd = false}) {
+    for (var i = 0; i < _points.length; i++) {
+      final e = _points[i];
+      e.controlPoint.dx *= flag;
+      if (i == _points.length - 1 && handleEnd) {
+        e.endPoint.dx = targetWidth;
+      } else {
+        e.endPoint.dx *= flag;
+      }
+    }
+  }
+
+  void _paintPoints(Canvas canvas) {
+    final endpointPaint = Paint()..color = Colors.black;
+    final controlpointPaint = Paint()..color = Colors.purple;
+    canvas.drawCircle(_startPoint.uiOffset, 5, endpointPaint);
+
+    for (var point in _points) {
+      canvas.drawCircle(point.controlPoint.uiOffset, 5, controlpointPaint);
+      canvas.drawCircle(point.endPoint.uiOffset, 5, endpointPaint);
+    }
+  }
+
+  void update(Offset delta) {
+    if (_selectedOffset == null) return;
+    if (_selectedOffset != _points.last.endPoint) {
+      _selectedOffset!.dx += delta.dx;
+    }
+    _selectedOffset!.dy += delta.dy;
+    notifyListeners();
+  }
+
+  void onPanDown(DragDownDetails details) {
+    final rPosition = details.localPosition - Offset(0, _lastPaintOffset);
+
+    _Offset? temp;
+
+    for (var e in _points) {
+      if (_judgeCircleArea(rPosition, e.controlPoint, 33)) {
+        temp = e.controlPoint;
+        break;
+      }
+      if (_judgeCircleArea(rPosition, e.endPoint, 33)) {
+        temp = e.endPoint;
+        break;
+      }
+    }
+
+    if (temp == _selectedOffset) return;
+
+    _selectedOffset = temp;
+    if (_selectedOffset != _points.last.endPoint) {
+      temp?.dx = rPosition.dx;
+    }
+    temp?.dy = rPosition.dy;
+    notifyListeners();
+  }
+
+  void onPanEnd(DragEndDetails details) {
+    if (_selectedOffset == null) return;
+    _selectedOffset = null;
+    notifyListeners();
+  }
+
+  bool _judgeCircleArea(Offset tapPoint, _Offset point, double r) => (tapPoint - point.uiOffset).distance <= r;
+
+  LFBezierData generateData() => LFBezierData(
+        topHeight: topHeight,
+        bottomHeight: bottomHeight,
+        targetWidth: targetWidth,
+        points: _points
+            .map((e) => PointCupple(controlPoint: e.controlPoint.jsonOffset, endPoint: e.endPoint.jsonOffset))
+            .toList(),
+      );
+
+  bool inputData(String data) {
+    LFBezierData? temp;
+    try {
+      temp = LFBezierData.fromJson(jsonDecode(data));
+    } catch (e) {
+      print('json解析失败');
+    }
+    if (temp == null) return false;
+    topHeight = temp.topHeight;
+    bottomHeight = temp.bottomHeight;
+    _targetWidth = temp.targetWidth;
+    _points = temp.points
+        .map((e) => MyPointCupple(_Offset(e.controlPoint.x, e.controlPoint.y), _Offset(e.endPoint.x, e.endPoint.y)))
+        .toList();
+    notifyListeners();
+    return true;
+  }
+
+  @override
+  bool shouldRepaint(BezierGetter oldDelegate) => true;
+
   @override
   bool? hitTest(Offset? position) => true;
-  
+
   @override
   bool shouldRebuildSemantics(CustomPainter oldDelegate) => false;
 
@@ -149,7 +357,7 @@ class _ChessboardPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = Colors.grey
-      ..strokeWidth = 0.5;
+      ..strokeWidth = 0.2;
 
     const cellSize = 10.0;
 
